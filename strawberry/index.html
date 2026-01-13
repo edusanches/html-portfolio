@@ -1,0 +1,372 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>3D Rotating ASCII Strawberry</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            background: linear-gradient(135deg, #1a0a0a 0%, #2d1515 50%, #1a0a0a 100%);
+            min-height: 100vh;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            font-family: 'Courier New', monospace;
+            overflow: hidden;
+        }
+        
+        h1 {
+            color: #ff6b6b;
+            margin-bottom: 20px;
+            text-shadow: 0 0 10px #ff6b6b55;
+            font-size: 1.5rem;
+        }
+        
+        #canvas {
+            font-size: 10px;
+            line-height: 10px;
+            letter-spacing: 2px;
+            white-space: pre;
+            text-shadow: 0 0 5px currentColor;
+            cursor: grab;
+            user-select: none;
+        }
+        
+        .controls {
+            margin-top: 30px;
+            display: flex;
+            gap: 15px;
+        }
+        
+        button {
+            background: linear-gradient(145deg, #ff6b6b, #c0392b);
+            border: none;
+            color: white;
+            padding: 10px 25px;
+            border-radius: 25px;
+            cursor: pointer;
+            font-family: inherit;
+            font-size: 14px;
+            transition: all 0.3s ease;
+            box-shadow: 0 4px 15px rgba(255, 107, 107, 0.3);
+        }
+        
+        button:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 6px 20px rgba(255, 107, 107, 0.5);
+        }
+        
+        .info {
+            color: #888;
+            margin-top: 20px;
+            font-size: 12px;
+        }
+    </style>
+</head>
+<body>
+    <h1>🍓 3D ASCII Strawberry 🍓</h1>
+    <pre id="canvas"></pre>
+    <div class="controls">
+        <button onclick="toggleRotation()">Auto-Rotate</button>
+        <button onclick="changeSpeed(-0.5)">Slower</button>
+        <button onclick="changeSpeed(0.5)">Faster</button>
+    </div>
+    <p class="info">🖱️ Click and drag to rotate • Use buttons for auto-rotation</p>
+
+    <script>
+        const canvas = document.getElementById('canvas');
+        const width = 80;
+        const height = 50;
+        
+        let A = 0, B = 0, C = 0;
+        let isRotating = true;
+        let speed = 1;
+        
+        // Strawberry shape defined by points
+        function createStrawberryPoints() {
+            const points = [];
+            
+            // Main berry body - using parametric equations for a strawberry shape
+            // Create a FILLED berry (not just surface) so it properly occludes things behind it
+            for (let theta = 0; theta < Math.PI * 2; theta += 0.05) {
+                for (let phi = 0.1; phi < Math.PI * 0.9; phi += 0.05) {
+                    // Strawberry profile: wider at top, pointed at bottom
+                    const profile = Math.sin(phi) * (1 - 0.35 * Math.pow(phi / Math.PI, 2));
+                    const maxR = 1.6 * profile;
+                    
+                    // Fill the interior by creating points at multiple radii
+                    for (let rFactor = 0.3; rFactor <= 1.0; rFactor += 0.1) {
+                        const r = maxR * rFactor;
+                        
+                        const x = r * Math.sin(phi) * Math.cos(theta);
+                        const y = -2.0 * Math.cos(phi) + 0.5;
+                        const z = r * Math.sin(phi) * Math.sin(theta);
+                        
+                        points.push({
+                            x: x,
+                            y: y,
+                            z: z,
+                            type: 'berry',
+                            phi: phi
+                        });
+                    }
+                }
+            }
+            
+            // Seeds on the surface
+            for (let i = 0; i < 80; i++) {
+                const theta = Math.random() * Math.PI * 2;
+                const phi = 0.2 + Math.random() * 0.6 * Math.PI;
+                const profile = Math.sin(phi) * (1 - 0.35 * Math.pow(phi / Math.PI, 2));
+                const r = 1.65 * profile;
+                
+                const x = r * Math.sin(phi) * Math.cos(theta);
+                const y = -2.0 * Math.cos(phi) + 0.5;
+                const z = r * Math.sin(phi) * Math.sin(theta);
+                
+                points.push({
+                    x: x,
+                    y: y,
+                    z: z,
+                    type: 'seed'
+                });
+            }
+            
+            // Leaves at the top - positioned ABOVE the berry
+            const topY = -1.6; // Top of the berry
+            for (let leaf = 0; leaf < 6; leaf++) {
+                const baseAngle = (leaf / 6) * Math.PI * 2;
+                for (let t = 0; t < 1; t += 0.06) {
+                    const spread = 0.2 + t * 0.8;
+                    const droop = t * t * 0.3; // Leaves droop slightly outward
+                    
+                    const x = spread * Math.cos(baseAngle);
+                    const y = topY - 0.1 + droop;
+                    const z = spread * Math.sin(baseAngle);
+                    
+                    // Add width to leaves
+                    for (let w = -0.15; w <= 0.15; w += 0.05) {
+                        points.push({
+                            x: x + w * Math.cos(baseAngle + Math.PI/2),
+                            y: y,
+                            z: z + w * Math.sin(baseAngle + Math.PI/2),
+                            type: 'leaf'
+                        });
+                    }
+                }
+            }
+            
+            // Stem
+            for (let t = 0; t < 0.5; t += 0.05) {
+                for (let angle = 0; angle < Math.PI * 2; angle += 0.3) {
+                    const r = 0.1;
+                    points.push({
+                        x: r * Math.cos(angle),
+                        y: -1.8 - t,
+                        z: r * Math.sin(angle),
+                        type: 'stem'
+                    });
+                }
+            }
+            
+            return points;
+        }
+        
+        const strawberryPoints = createStrawberryPoints();
+        
+        let isDragging = false;
+        let previousMouseX = 0;
+        let previousMouseY = 0;
+        
+        // Mouse event listeners
+        canvas.addEventListener('mousedown', (e) => {
+            isDragging = true;
+            isRotating = false;
+            previousMouseX = e.clientX;
+            previousMouseY = e.clientY;
+            canvas.style.cursor = 'grabbing';
+        });
+        
+        document.addEventListener('mousemove', (e) => {
+            if (isDragging) {
+                const deltaX = e.clientX - previousMouseX;
+                const deltaY = e.clientY - previousMouseY;
+                
+                B += deltaX * 0.01;
+                A += deltaY * 0.01;
+                
+                previousMouseX = e.clientX;
+                previousMouseY = e.clientY;
+            }
+        });
+        
+        document.addEventListener('mouseup', () => {
+            isDragging = false;
+            canvas.style.cursor = 'grab';
+        });
+        
+        // Touch event listeners for mobile
+        canvas.addEventListener('touchstart', (e) => {
+            isDragging = true;
+            isRotating = false;
+            previousMouseX = e.touches[0].clientX;
+            previousMouseY = e.touches[0].clientY;
+            e.preventDefault();
+        });
+        
+        document.addEventListener('touchmove', (e) => {
+            if (isDragging) {
+                const deltaX = e.touches[0].clientX - previousMouseX;
+                const deltaY = e.touches[0].clientY - previousMouseY;
+                
+                B += deltaX * 0.01;
+                A += deltaY * 0.01;
+                
+                previousMouseX = e.touches[0].clientX;
+                previousMouseY = e.touches[0].clientY;
+            }
+        });
+        
+        document.addEventListener('touchend', () => {
+            isDragging = false;
+        });
+        
+        function rotateX(x, y, z, angle) {
+            const cos = Math.cos(angle);
+            const sin = Math.sin(angle);
+            return { x, y: y * cos - z * sin, z: y * sin + z * cos };
+        }
+        
+        function rotateY(x, y, z, angle) {
+            const cos = Math.cos(angle);
+            const sin = Math.sin(angle);
+            return { x: x * cos + z * sin, y, z: -x * sin + z * cos };
+        }
+        
+        function rotateZ(x, y, z, angle) {
+            const cos = Math.cos(angle);
+            const sin = Math.sin(angle);
+            return { x: x * cos - y * sin, y: x * sin + y * cos, z };
+        }
+        
+        function render() {
+            const buffer = [];
+            const zBuffer = [];
+            const typeBuffer = [];
+            
+            // Initialize buffers
+            for (let i = 0; i < width * height; i++) {
+                buffer[i] = ' ';
+                zBuffer[i] = -Infinity;
+                typeBuffer[i] = null;
+            }
+            
+            const scale = 8;
+            const distance = 5;
+            
+            for (const point of strawberryPoints) {
+                let { x, y, z } = point;
+                
+                // Apply rotations
+                let rotated = rotateX(x, y, z, A);
+                rotated = rotateY(rotated.x, rotated.y, rotated.z, B);
+                rotated = rotateZ(rotated.x, rotated.y, rotated.z, C);
+                
+                // Project to 2D
+                const zOffset = rotated.z + distance;
+                const projX = Math.floor(width / 2 + (rotated.x * scale * 2) / zOffset * distance);
+                const projY = Math.floor(height / 2 + (rotated.y * scale) / zOffset * distance);
+                
+                if (projX >= 0 && projX < width && projY >= 0 && projY < height) {
+                    const idx = projY * width + projX;
+                    
+                    if (rotated.z > zBuffer[idx]) {
+                        zBuffer[idx] = rotated.z;
+                        
+                        // Calculate lighting based on surface normal approximation
+                        const lightIntensity = (rotated.z + 2) / 4;
+                        
+                        // Choose character based on type and lighting
+                        let char;
+                        if (point.type === 'seed') {
+                            char = '•';
+                        } else if (point.type === 'leaf') {
+                            const leafChars = ['∿', '❧', '✿', '❀'];
+                            char = leafChars[Math.floor(Math.max(0, Math.min(0.99, lightIntensity)) * leafChars.length)];
+                        } else if (point.type === 'stem') {
+                            char = '║';
+                        } else {
+                            // Berry surface with depth shading
+                            const berryChars = ['.', ':', 'o', 'O', '0', '@', '#', '█'];
+                            const charIdx = Math.floor(Math.max(0, Math.min(0.99, lightIntensity)) * berryChars.length);
+                            char = berryChars[charIdx];
+                        }
+                        
+                        buffer[idx] = char;
+                        typeBuffer[idx] = point.type;
+                    }
+                }
+            }
+            
+            // Convert buffer to colored HTML
+            let output = '';
+            for (let y = 0; y < height; y++) {
+                for (let x = 0; x < width; x++) {
+                    const char = buffer[y * width + x];
+                    const z = zBuffer[y * width + x];
+                    const type = typeBuffer[y * width + x];
+                    
+                    if (char !== ' ') {
+                        // Color based on point type
+                        let color;
+                        if (type === 'seed') {
+                            color = '#ffeb3b'; // Yellow seeds
+                        } else if (type === 'leaf') {
+                            color = '#4caf50'; // Green leaves
+                        } else if (type === 'stem') {
+                            color = '#2e7d32'; // Dark green stem
+                        } else {
+                            // Red gradient for berry based on depth
+                            const brightness = Math.floor(150 + (z + 2) * 50);
+                            color = `rgb(${Math.min(255, brightness + 50)}, ${Math.max(0, brightness - 100)}, ${Math.max(0, brightness - 100)})`;
+                        }
+                        output += `<span style="color:${color}">${char}</span>`;
+                    } else {
+                        output += ' ';
+                    }
+                }
+                output += '\n';
+            }
+            
+            canvas.innerHTML = output;
+        }
+        
+        function animate() {
+            if (isRotating) {
+                A += 0.02 * speed;
+                B += 0.03 * speed;
+                C += 0.01 * speed;
+            }
+            render();
+            requestAnimationFrame(animate);
+        }
+        
+        function toggleRotation() {
+            isRotating = !isRotating;
+        }
+        
+        function changeSpeed(delta) {
+            speed = Math.max(0.1, Math.min(3, speed + delta));
+        }
+        
+        animate();
+    </script>
+</body>
+</html>
